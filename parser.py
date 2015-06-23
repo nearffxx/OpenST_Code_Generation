@@ -3,31 +3,17 @@ import sys
 
 sys.path.extend(['.', '..'])
 
-from pycparser import c_generator, c_parser, c_ast
+from pycparser import parse_file, c_generator, c_parser, c_ast
 parser = c_parser.CParser()
 generator = c_generator.CGenerator()
-
-text = r"""
-struct st{
-	int a;
-	int b;
-};
-int sys_test(struct st st1)
-{
-	int a;
-}
-
-int normal()
-{}
-"""
 
 mycode_text = r"""
 func() {
  struct _struct_name *_name = malloc(_size);
 }
 """
+ast = parse_file("sourcecode.c", use_cpp=True)
 mycode = parser.parse(mycode_text, filename='<none>')
-ast = parser.parse(text, filename='<none>')
 
 
 
