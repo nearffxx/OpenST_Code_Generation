@@ -36,36 +36,64 @@ char* to_delete(int depth){
 }
 """
 
-# TODO: erase dump_param and len if param is literal
 single_param_text = r"""
 char* to_delete(int depth){
 	char *param_str;
-	int len;
+	int len = 0;
 
 	unsigned int addr = get_uint32_t_register_by_name(target->reg_cache, "r0");
-	len = dump_param(depth, addr, &param_str);
+	len += dump_param(depth, addr, &param_str);
 
 	return param_str;
 }
 """
 
-#TODO: erase dump_param if param is literal
+dump_param_text = r"""
+void to_delete() {
+	len += dump_param(depth, addr, &param_str[_index]);
+}
+"""
+
 multiple_param_text = r"""
 char* to_delete(int depth){
 	char *param_str, **dumped_params;
-	int len;
+	int len = 0;
 
 	dumped_params = malloc(_nr_params*sizeof(char*));
 
-	len = dump_pollfd(depth, &dumped_params[0]);
-	len += dump_uint(&dumped_params[1]);
-	len += dump_long(&dumped_params[2]);
 
 	param_str = copy_params(dumped_params, _nr_params, len);
 
 	free_dumped_params(dumped_params, _nr_params);
 
 	return param_str;
+}
+"""
+
+#TODO: does not need to be necessarily a pointer when depth==0, may be a struct (test on OpenOCD)
+dump_complex_type_template = r"""
+int _funcname(int depth, unsigned int addr, char **dumped_params) {
+	char **dumped_type_params;
+	int len = 0;
+
+	if(depth < 0)
+	{
+		*dumped_params = malloc(0);
+	} else if (depth == 0) {
+		len = 11;
+		*dumped_params = malloc(len);
+		snprintf(*dumped_params, len, "0x%u", addr);
+	} else {
+		dumped_type_params = malloc(_nr_params*sizeof(char*));
+
+
+
+		*dumped_params = copy_params(dumped_type_params, _nr_params, len);
+
+		free_dumped_params(dumped_type_params, _nr_params);
+	}
+
+	return len;
 }
 """
 
@@ -76,12 +104,8 @@ int *_name = get_address_value(target, _addr, _size);
 mdw = parser.parse(md_template_text, filename='<none>')
 '''
 
-#ast = parser.parse(text, filename='<none>')
 syscalls = parser.parse(syscalls_text, filename='<none>')
 structs = parser.parse(structs_text, filename='<nome>')
-
-#print("before:")
-#print(generator.visit(syscalls))
 
 '''
 we should do:
@@ -103,9 +127,40 @@ others:
 	https://en.wikipedia.org/wiki/C_data_types#Basic_types
 '''
 
-basic_types = {'long': "%d", 'int': "%d", 'unsigned long': "%u", 'unsigned int': "%u", 'unsigned': "%u"}
+basic_types = {'long': "%d", 'int': "%d", 'short': "%d", 
+				'unsigned long': "%u", 'unsigned int': "%u", 'unsigned short': "%u", 'unsigned': "%u"}
+
+def get_type_from_typedecl(typedecl):
+	paramType = ""
+
+	if type(typedecl.type) == c_ast.IdentifierType:
+		paramType = " ".join(typedecl.type.names)
+	elif type(typedecl.type) == c_ast.Struct:
+		paramType = typedecl.type.name
+	else:
+		print("[get_type_from_typedecl] SHOULD NOT HAPPEN")
+
+	return paramType
 
 class FuncDefVisitor(c_ast.NodeVisitor):
+	def no_params(self, param):
+		if type(param.type.type) == c_ast.IdentifierType:
+			return param.type.type.names[0] == "void"
+
+	def getParamType(self, param):
+		paramType = ""
+
+		while isPtr(param):
+			param = param.type
+
+		if type(param.type) == c_ast.TypeDecl:
+			paramType = get_type_from_typedecl(param.type)
+			print("\nHEY: %s" % param.type)
+		else:
+			print("[getParamType] SHOULD NOT HAPPEN")
+
+		return paramType
+
 	def visit_FuncDef(self, node):
 		if "sys_" in node.decl.name:
 			# Create function Body if it has no elements
@@ -118,7 +173,7 @@ class FuncDefVisitor(c_ast.NodeVisitor):
 
 			params = node.decl.type.args.params
 
-			if no_params(params[0]):
+			if self.no_params(params[0]):
 				void_params = parser.parse(void_params_text, filename='<nome>').ext[0]
 				for block_item in void_params.body.block_items:
 					node.body.block_items.append(block_item)
@@ -128,22 +183,61 @@ class FuncDefVisitor(c_ast.NodeVisitor):
 			if len(params) == 1:
 				single_param = parser.parse(single_param_text, filename='<nome>').ext[0]
 				snprintf_template = parser.parse(snprintf_text, filename='<nome>').ext[0]
+
 				if isBasicType(params[0]):
-					block_items = single_param.body.block_items
+					block_items		= single_param.body.block_items
+					snprintf_exprs	= snprintf_template.init.args.exprs
+
 					del block_items[3] #dump_param
 					del block_items[1] #int len
-					snprintf_template.init.args.exprs[0].name = "param_str"
-					snprintf_template.init.args.exprs[1].name = "22" #allocate 22(20 digits at most +"\0"+"-")
-					snprintf_template.init.args.exprs[2].name = '"%s"' % basic_types[" ".join(params[0].type.type.names)] #use a dictionary???
-					snprintf_template.init.args.exprs[3].name = "addr"
+					snprintf_exprs[0].name = "param_str"
+					snprintf_exprs[1].name = "22" #allocate 22(20 digits at most +"\0"+"-")
+					snprintf_exprs[2].name = '"%s"' % basic_types[" ".join(params[0].type.type.names)]
+					snprintf_exprs[3].name = "addr"
 					block_items.insert(2, snprintf_template) # insert snprintf before return
-				else: #TODO: inspect var to create "recursive" dump
-					print("TODO")
+				else: #inspect var to create "recursive" dump
+					paramType = self.getParamType(params[0])
+					single_param.body.block_items[3].rvalue.name.name = "dump_" + paramType
+
+					#TODO: function should check
+					dump_complex_type = parser.parse(dump_complex_type_template, filename='<none>').ext[0]
+					#TODO: create a getType function or add a return to isBasicType(param)
+					dump_complex_type.decl.name 				= "dump_" + paramType
+					dump_complex_type.decl.type.type.declname	= "dump_" + paramType
+
+					#TODO: add "elif" IFNODE('cond', 'iftrue', 'iffalse')
+					block_items_dump = dump_complex_type.body.block_items[2].iffalse.iffalse.block_items
+					# nr_params = 1
+					block_items_dump[0].rvalue.args.exprs[0].left.name	= "1"
+					block_items_dump[1].rvalue.args.exprs[1].name		= "1"
+					block_items_dump[2].args.exprs[1].name				= "1"
+
+					syscalls.ext.append(dump_complex_type)
+
+
+#dump_param_text = r"""
+#void to_delete() {
+#	len += dump_param(depth, addr, &param_str[_index]);
+#}
+#"""
+
+
+#					v = DeclVisitor('pollfd')
+#					v.visit(structs_template)
+#					types = v.get_var_types()
+#					for t in xrange(len(types)):
+#						if "isStTd" in types[t]:
+#							v.set_var_types(types[t][6:], t)
+#							print(types[t])
+#					print(types)
+
 				for block_item in single_param.body.block_items:
 					node.body.block_items.append(block_item)
 				node.decl.type.args.params = single_param.decl.type.args.params
 				return
 
+			# if True deletes "depth" from the dump function call
+			# single_param.body.block_items.insert(4, generate_dump_param_call(param, isBasic=True))
 			i = 0
 			for param in params:
 				isBasicType(param)
@@ -154,10 +248,6 @@ class FuncDefVisitor(c_ast.NodeVisitor):
 				i += 1
 
 			node.decl.type.args.params = []
-
-def no_params(param):
-	if type(param.type.type) == c_ast.IdentifierType:
-		return param.type.type.names[0] == "void"
 
 def printParamInfo(param):
 	print("param: %s" % type(param))
@@ -178,7 +268,6 @@ def isBasicType(param):
 	# param is not a ptr
 	if type(param.type) == c_ast.TypeDecl:
 		paramType = " ".join(param.type.type.names)
-		print(paramType)
 		if paramType in basic_types:
 			return True
 	return False
@@ -201,6 +290,15 @@ def isStruct(param):
 		#print("returning *: %s " % (type(param.type.type.type) == c_ast.Struct) )
 		return type(param.type.type.type) == c_ast.Struct
 	return False
+
+def generate_dump_param_call(param, isBasic=False):
+	dump_param_template = parser.parse(dump_param_text, filename='<nome>').ext[0].body.block_items[0]
+
+	dump_param_template.rvalue.name.name = param.name
+	if isBasic:
+		del dump_param_template.rvalue.args.exprs[0]
+
+	return dump_param_template
 
 def generate_get_register(param, i):
 	get_register_template = parser.parse(get_register_template_text, filename='<nome>').ext[0]
@@ -240,6 +338,7 @@ class TypeDeclVisitor(c_ast.NodeVisitor):
 			print("\t %s" % node.type.decls[0].init)
 		print()
 
+#TODO: test with structs without pointers, like "loff_t length" and "pid_t pid"
 structs_template_text = r"""
 typedef int		__kernel_pid_t;
 typedef __kernel_pid_t          pid_t;
@@ -248,9 +347,10 @@ struct pollfd {
 	short events;
 	unsigned short revents;
 	struct st two_digs;
-	pid_t id;
 	pid_t *pid;
 	struct st *pid2;
+	struct st **pid2;
+	unsigned int **pid2;
 };
 struct st
 {
@@ -267,7 +367,7 @@ typedef struct {
 }time_t;
 """
 
-structs_template = parser.parse(structs_template_text, filename='<none>')
+structs_template = parser.parse(structs_text, filename='<none>')
 
 class DeclVisitor(c_ast.NodeVisitor):
 	def __init__(self, struct_name):
@@ -277,6 +377,23 @@ class DeclVisitor(c_ast.NodeVisitor):
 	def get_var_types(self):
 		return self.var_types
 
+	def set_var_types(self, new_type, ix):
+		self.var_types[ix] = new_type
+
+	def set_types_from_typedecl(self, typedecl, pref=""):
+		types = ""
+		if type(typedecl.type) == c_ast.IdentifierType:
+			#print("\t\t\t %s" % " ".join(typedecl.type.names))
+			#print("%s %s" % (" ".join(typedecl.type.names), typedecl.declname))
+			types = pref + " ".join(typedecl.type.names)
+		elif type(typedecl.type) == c_ast.Struct:
+			#print("\t\t\t %s" % typedecl.type.name)
+			#print("%s %s" % (typedecl.type.name, typedecl.declname))
+			types = "isStTd" + pref + typedecl.type.name
+		else:
+			print("[set_types_from_typedecl] SHOULD NOT HAPPEN")
+		self.var_types.append(types)
+
 	def visit_Decl(self, node):
 		if type(node.type) == c_ast.Struct:
 			if node.type.name == self.struct_name:
@@ -284,24 +401,20 @@ class DeclVisitor(c_ast.NodeVisitor):
 					if type(var.type) == c_ast.TypeDecl:
 						#print("\t %s" % var.name)
 						#print("\t\t %s" % var.type.declname)
-						if type(var.type.type) == c_ast.IdentifierType:
-							#print("\t\t\t %s" % " ".join(var.type.type.names))
-							print("%s %s" % (" ".join(var.type.type.names), var.name))
-							self.var_types.append(" ".join(var.type.type.names))
-						elif type(var.type.type) == c_ast.Struct:
-							#print("\t\t\t %s" % var.type.type.name)
-							print("%s %s" % (var.type.type.name, var.name))
-							self.var_types.append(var.type.type.name)
+						self.set_types_from_typedecl(var.type)
 					elif type(var.type) == c_ast.PtrDecl:
 						if type(var.type.type) == c_ast.TypeDecl:
-							if type(var.type.type.type) == c_ast.IdentifierType:
-								#print("\t\t\t %s" % " ".join(var.type.type.type.names))
-								print("%s *%s" % (" ".join(var.type.type.type.names), var.name))
-							elif type(var.type.type.type) == c_ast.Struct:
-								#print("\t\t\t %s" % var.type.type.type.name)
-								print("%s *%s" % (var.type.type.type.name, var.name))
+							#print("\t %s" % var.name)
+							#print("\t\t %s" % var.type.declname)
+							self.set_types_from_typedecl(var.type.type, "*")
 						elif type(var.type.type) == c_ast.PtrDecl: # double ptrs
-							print("double ptr: %s" % type(var.type.type.type))
+							#print("double ptr: %s" % type(var.type.type.type))
+							self.set_types_from_typedecl(var.type.type.type, "**")
+							# TODO: do not ignore more than 2ptrs
+						else:
+							print("[visit_Decl:1] SHOULD NOT HAPPEN")
+					else:
+						print("[visit_Decl:2] SHOULD NOT HAPPEN")
 			#print(type(node))
 			#print(node.name)
 			#print(node.funcspec)
@@ -320,13 +433,18 @@ class DeclVisitor(c_ast.NodeVisitor):
 				print("\t %s" % node.type.type.decls[0].init)
 '''
 
-v = DeclVisitor('pollfd')
+v = DeclVisitor('_st2')
 v.visit(structs_template)
-print(v.get_var_types())
+types = v.get_var_types()
+for t in xrange(len(types)):
+	if "isStTd" in types[t]:
+		v.set_var_types(types[t][6:], t)
+		print(types[t])
+print(types)
 
-#v = FuncDefVisitor()
-#v.visit(syscalls)
+v = FuncDefVisitor()
+v.visit(syscalls)
 
-#print("after:")
-#print(generator.visit(syscalls))
+print("after:")
+print(generator.visit(syscalls))
 
