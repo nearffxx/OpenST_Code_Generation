@@ -1,0 +1,1 @@
+/usr/bin/cc  -g    CMakeFiles/scncopy.dir/scncopy.o CMakeFiles/scncopy.dir/elfcreator.o  -o scncopy -rdynamic libdwarves.so.1.0.0 -lelf -Wl,-rpath,/home/nearffxx/parser/pahole/build: 

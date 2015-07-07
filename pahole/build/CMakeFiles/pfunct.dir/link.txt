@@ -1,0 +1,1 @@
+/usr/bin/cc  -g    CMakeFiles/pfunct.dir/pfunct.o  -o pfunct -rdynamic libdwarves.so.1.0.0 libdwarves_emit.so.1.0.0 -lelf libdwarves.so.1.0.0 -Wl,-rpath,/home/nearffxx/parser/pahole/build: 

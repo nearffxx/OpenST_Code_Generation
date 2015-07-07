@@ -1,0 +1,1 @@
+/usr/bin/cc  -g    CMakeFiles/pahole.dir/pahole.o  -o pahole -rdynamic libdwarves.so.1.0.0 libdwarves_reorganize.so.1.0.0 libdwarves.so.1.0.0 -Wl,-rpath,/home/nearffxx/parser/pahole/build: 

@@ -1,0 +1,1 @@
+/usr/bin/cc  -fPIC -g   -shared -Wl,-soname,libdwarves_emit.so.1 -o libdwarves_emit.so.1.0.0 CMakeFiles/dwarves_emit.dir/dwarves_emit.o libdwarves.so.1.0.0 -Wl,-rpath,/home/nearffxx/parser/pahole/build: 

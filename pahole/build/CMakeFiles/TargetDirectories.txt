@@ -1,0 +1,13 @@
+/home/nearffxx/parser/pahole/build/CMakeFiles/codiff.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/ctracer.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/dtagnames.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/dwarves.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/dwarves_emit.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/dwarves_reorganize.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/pahole.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/pdwtags.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/pfunct.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/pglobal.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/prefcnt.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/scncopy.dir
+/home/nearffxx/parser/pahole/build/CMakeFiles/syscse.dir
