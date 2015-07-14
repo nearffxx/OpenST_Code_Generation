@@ -766,11 +766,11 @@ static size_t struct_member__fprintf(struct class_member *member,
 			int size_spacing = 5;
 
 			printed += fprintf(fp, sconf.hex_fmt ?
-						"%*s/* %#5x" : "%*s/* %5u",
+						"%*s offset = %#5x;" : "%*s offset = %5u;",
 					   spacing > 0 ? spacing : 0, " ",
 					   offset);
 
-			if (member->bitfield_size != 0) {
+		if (member->bitfield_size != 0) {
 				printed += fprintf(fp, sconf.hex_fmt ?
 							":%#2x" : ":%2u",
 						   member->bitfield_offset);
@@ -778,7 +778,7 @@ static size_t struct_member__fprintf(struct class_member *member,
 			}
 
 			printed += fprintf(fp, sconf.hex_fmt ?
-						" %#*x */" : " %*u */",
+						" size = %#*x;" : " size = %*u;",
 					   size_spacing, size);
 		}
 	}
