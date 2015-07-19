@@ -1,1 +1,0 @@
-/usr/bin/cc  -g    CMakeFiles/dtagnames.dir/dtagnames.o  -o dtagnames -rdynamic libdwarves.so.1.0.0 -Wl,-rpath,/home/nearffxx/parser/pahole/build: 

@@ -1,1 +1,0 @@
-/usr/bin/cc  -g    CMakeFiles/prefcnt.dir/prefcnt.o  -o prefcnt -rdynamic libdwarves.so.1.0.0 -Wl,-rpath,/home/nearffxx/parser/pahole/build: 
