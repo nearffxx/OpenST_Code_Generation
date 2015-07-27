@@ -242,6 +242,7 @@ size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 	char bf[512];
 	int is_pointer = 0;
 	size_t printed;
+  struct conf_fprintf tconf;
 
 	/*
 	 * Check for void (humm, perhaps we should have a fake void tag instance
@@ -256,6 +257,15 @@ size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 		printed += tag__id_not_found_fprintf(fp, tag->type);
 		return printed + fprintf(fp, " %s", type__name(type, cu));
 	}
+
+  if (tag__is_struct(tag_type) || tag__is_union(tag_type) ||
+      tag__is_enumeration(tag_type)) {
+    tconf = *conf;
+    tconf.type_spacing -= 8;
+    tconf.prefix     = NULL;
+    tconf.suffix     = NULL;
+    tconf.emit_stats   = 0;
+}
 
 	switch (tag_type->tag) {
 	case DW_TAG_array_type:
@@ -292,6 +302,13 @@ size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 			return fprintf(fp, "typedef struct %s %s",
 				       type__name(ctype, cu),
 				       type__name(type, cu));
+    else {
+      printed = fprintf(fp, "typedef ");
+      printed += class__fprintf(tag__class(tag_type),
+                                cu, &tconf, stdout);
+      printed += fprintf(fp, " %s", type__name(type, cu));
+      return printed;
+    }
 	}
 	}
 
@@ -553,7 +570,7 @@ static size_t type__fprintf(struct tag *type, const struct cu *cu,
 	if (type == NULL)
 		goto out_type_not_found;
 
-	if (1==1) {//conf->expand_pointers) {
+	if (2==1) {//conf->expand_pointers) {
 		int nr_indirections = 0;
 
 		while (type->tag == DW_TAG_pointer_type && type->type != 0) {
@@ -590,7 +607,7 @@ static size_t type__fprintf(struct tag *type, const struct cu *cu,
 		++type->recursivity_level;
 	}
 
-	if (1==1) {//expand_types) {
+	if (2==1) {//expand_types) {
 		int typedef_expanded = 0;
 
 		while (tag__is_typedef(type)) {
@@ -629,6 +646,8 @@ static size_t type__fprintf(struct tag *type, const struct cu *cu,
 	}
 
 	switch (type->tag) {
+	case DW_TAG_const_type:
+    type = cu__type(cu, type->type);
 	case DW_TAG_pointer_type:
 		if (type->type != 0) {
 			int n;
@@ -670,8 +689,10 @@ static size_t type__fprintf(struct tag *type, const struct cu *cu,
 					   conf->type_spacing - 7,
 					   type__name(ctype, cu), name);
 		else
+{
 			printed += class__fprintf(tag__class(type),
 						  cu, &tconf, fp);
+}
 		break;
 	case DW_TAG_union_type:
 		ctype = tag__type(type);
@@ -734,7 +755,9 @@ static size_t struct_member__fprintf(struct class_member *member,
 		if (member->const_value != 0)
 			printed += fprintf(fp, " = %" PRIu64 ";", member->const_value);
 	} else if (member->bitfield_size != 0) {
-		printed += fprintf(fp, ":%u;", member->bitfield_size);
+		//printed += fprintf(fp, ":%u;", member->bitfield_size);
+		fputc(';', fp);
+		++printed;
 	} else {
 		fputc(';', fp);
 		++printed;
@@ -762,23 +785,23 @@ static size_t struct_member__fprintf(struct class_member *member,
 			printed += p;
 			spacing -= p;
 		}
-		if (!sconf.suppress_offset_comment) {
+		if (1==1) {
 			int size_spacing = 5;
 
 			printed += fprintf(fp, sconf.hex_fmt ?
-						"%*s offset = %#5x;" : "%*s offset = %5u;",
+						"%*s int arm_tracing_offset[%#5x];" : "%*s int arm_tracing_offset[%5u];",
 					   spacing > 0 ? spacing : 0, " ",
 					   offset);
 
 		if (member->bitfield_size != 0) {
-				printed += fprintf(fp, sconf.hex_fmt ?
-							":%#2x" : ":%2u",
-						   member->bitfield_offset);
-				size_spacing -= 3;
+				//printed += fprintf(fp, sconf.hex_fmt ?
+				//			":%#2x" : ":%2u",
+				//		   member->bitfield_offset);
+				//size_spacing -= 3;
 			}
 
 			printed += fprintf(fp, sconf.hex_fmt ?
-						" size = %#*x;" : " size = %*u;",
+						"int arm_tracing_size[%#*x];" : "int arm_tracing_size[%*u];",
 					   size_spacing, size);
 		}
 	}
@@ -797,6 +820,7 @@ static size_t union_member__fprintf(struct class_member *member,
 	     tag__is_enumeration(type)) &&
 		/* Look if is a type defined inline */
 	    type__name(tag__type(type), cu) == NULL) {
+		printed += fprintf(fp, ";");
 		if (!conf->suppress_offset_comment) {
 			/* Check if this is a anonymous union */
 			const int slen = name ? (int)strlen(name) : -1;
@@ -806,8 +830,8 @@ static size_t union_member__fprintf(struct class_member *member,
 			 * above call to type__fprintf.
 			 */
 			printed += fprintf(fp, conf->hex_fmt ?
-							";%*s/* %#11zx */" :
-							";%*s/* %11zd */",
+							"%*s/* %#11zx */" :
+							"%*s/* %11zd */",
 					   (conf->type_spacing +
 					    conf->name_spacing - slen - 3), " ", size);
 		}
@@ -1246,6 +1270,11 @@ size_t class__fprintf(struct class *class, const struct cu *cu,
 
 	printed += fprintf(fp, " {\n");
 
+  if (!type->nr_members)
+  {
+    printed += fprintf(fp, "%*s int %*s a;%*s int arm_tracing_offset[%5u];int arm_tracing_size[%5u];\n", 7, " ", 22, " ", 20, " ", 0,  0);
+  }
+
 	type__for_each_tag(type, tag_pos) {
 		struct tag *type;
 		const char *accessibility = tag__accessibility(tag_pos);
@@ -1473,7 +1502,7 @@ size_t class__fprintf(struct class *class, const struct cu *cu,
 	if (!cconf.emit_stats)
 		goto out;
 
-	printed += fprintf(fp, "\n%.*s/* size: %d, cachelines: %zd, members: %u",
+	printed += fprintf(fp, "\n%.*s/* size: %d, cachelines: %zd, members: %u, static memebers: %u",
 			   cconf.indent, tabs,
 			   class__size(class),
 			   tag__nr_cachelines(class__tag(class), cu),

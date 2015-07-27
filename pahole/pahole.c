@@ -272,6 +272,19 @@ static struct class *class__filter(struct class *class, struct cu *cu,
 static void (*formatter)(struct class *class,
 			 struct cu *cu, uint16_t id) = class_formatter;
 
+static void print_types(struct cu *cu)
+{
+  int id;
+  struct tag *tag;
+  cu__for_each_type(cu, id, tag) {
+    if(tag__is_typedef(tag))
+    {
+      typedef__fprintf(tag, cu, &conf, stdout);
+      puts(";");
+    }
+  }
+}
+
 static void print_classes(struct cu *cu)
 {
 	uint16_t id;
@@ -1126,6 +1139,7 @@ static enum load_steal_kind pahole_stealer(struct cu *cu,
 
 		memset(tab, ' ', sizeof(tab) - 1);
 
+    print_types(cu);
 		print_classes(cu);
 		goto dump_it;
 	}

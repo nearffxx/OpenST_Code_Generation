@@ -43,6 +43,7 @@ struct strings *strings;
 
 static void __tag__print_not_supported(uint32_t tag, const char *func)
 {
+  return;
 #ifdef STB_GNU_UNIQUE
 	static bool dwarf_tags_warned[DW_TAG_rvalue_reference_type];
 	static bool dwarf_gnu_tags_warned[DW_TAG_GNU_formal_parameter_pack - DW_TAG_MIPS_loop];
