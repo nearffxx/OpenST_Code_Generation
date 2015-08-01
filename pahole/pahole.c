@@ -219,6 +219,7 @@ static void class_formatter(struct class *class, struct cu *cu, uint16_t id)
 	} else
 		conf.prefix = conf.suffix = NULL;
 
+printf("ciao");
 	tag__fprintf(tag, cu, &conf, stdout);
 
 	putchar('\n');

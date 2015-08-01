@@ -232,6 +232,8 @@ static size_t array_type__fprintf(const struct tag *tag,
 	return printed;
 }
 
+bool fixtypedef;
+
 size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 			const struct conf_fprintf *conf, FILE *fp)
 {
@@ -289,26 +291,28 @@ size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 		is_pointer = 1;
 		/* Fall thru */
 	case DW_TAG_subroutine_type:
+    fixtypedef = true;
 		printed = fprintf(fp, "typedef ");
 		return printed + ftype__fprintf(tag__ftype(tag_type), cu,
 						type__name(type, cu),
 						0, is_pointer, 0,
 						pconf, fp);
+  case DW_TAG_enumeration_type:
+    printed = fprintf(fp, "typedef ");
+    printed += enumeration__fprintf(tag_type,
+                                     cu, &tconf, stdout);
+    printed += fprintf(fp, " %s",
+               type__name(type, cu));
+    return printed;
 	case DW_TAG_class_type:
 	case DW_TAG_structure_type: {
 		struct type *ctype = tag__type(tag_type);
 
-		if (type__name(ctype, cu) != NULL)
-			return fprintf(fp, "typedef struct %s %s",
-				       type__name(ctype, cu),
-				       type__name(type, cu));
-    else {
-      printed = fprintf(fp, "typedef ");
-      printed += class__fprintf(tag__class(tag_type),
-                                cu, &tconf, stdout);
-      printed += fprintf(fp, " %s", type__name(type, cu));
-      return printed;
-    }
+    printed = fprintf(fp, "typedef ");
+    printed += class__fprintf(tag__class(tag_type),
+                              cu, &tconf, stdout);
+    printed += fprintf(fp, " %s", type__name(type, cu));
+    return printed;
 	}
 	}
 
@@ -606,7 +610,6 @@ static size_t type__fprintf(struct tag *type, const struct cu *cu,
 			expand_types = 0;
 		++type->recursivity_level;
 	}
-
 	if (2==1) {//expand_types) {
 		int typedef_expanded = 0;
 
@@ -657,6 +660,9 @@ static size_t type__fprintf(struct tag *type, const struct cu *cu,
 			n = tag__has_type_loop(type, ptype, NULL, 0, fp);
 			if (n)
 				return printed + n;
+			if (ptype->tag != DW_TAG_subroutine_type && ptype->type) {
+        ptype = cu__type(cu, ptype->type);
+      }
 			if (ptype->tag == DW_TAG_subroutine_type) {
 				printed += ftype__fprintf(tag__ftype(ptype),
 							  cu, name, 0, 1,
@@ -777,7 +783,7 @@ static size_t struct_member__fprintf(struct class_member *member,
 					    sconf.name_spacing - slen - 3),
 					   " ", offset, size);
 		}
-	} else {
+	} if(1==1) {
 		int spacing = sconf.type_spacing + sconf.name_spacing - printed;
 
 		if (member->tag.tag == DW_TAG_inheritance) {
@@ -1090,15 +1096,27 @@ size_t ftype__fprintf(const struct ftype *ftype, const struct cu *cu,
 	struct tag *type = cu__type(cu, ftype->tag.type);
 	char sbf[128];
 	const char *stype = tag__name(type, cu, sbf, sizeof(sbf), conf);
-	size_t printed = fprintf(fp, "%s%-*s %s%s%s%s",
+	size_t printed = fprintf(fp, "%s%-*s ",
 				 inlined ? "inline " : "",
-				 type_spacing, stype,
+				 type_spacing, stype);
+  if(fixtypedef && type && type->type)
+    type = cu__type(cu, type->type);
+  if(fixtypedef && type && (type->tag == DW_TAG_structure_type ||
+                            type->tag == DW_TAG_enumeration_type ||
+                            type->tag == DW_TAG_union_type)) {
+    printed = fprintf(fp, "%s%s;\n",
+           "arm_tracing_", type__name(tag__type(type), cu));
+    printed = fprintf(fp, "typedef %s%s ",
+           "arm_tracing_", type__name(tag__type(type), cu));
+  }
+	printed = fprintf(fp, "%s%s%s%s",
 				 ftype->tag.tag == DW_TAG_subroutine_type ?
 					"(" : "",
 				 is_pointer ? "*" : "", name ?: "",
 				 ftype->tag.tag == DW_TAG_subroutine_type ?
 					")" : "");
 
+  fixtypedef = false;
 	return printed + ftype__fprintf_parms(ftype, cu, 0, conf, fp);
 }
 
