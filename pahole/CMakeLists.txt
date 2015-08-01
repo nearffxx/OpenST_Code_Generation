@@ -67,6 +67,11 @@ set(pahole_SRCS pahole.c)
 add_executable(pahole ${pahole_SRCS})
 target_link_libraries(pahole dwarves dwarves_reorganize)
 
+set(pahole_SRCS hashmap.c)
+add_executable(pahole ${pahole_SRCS})
+target_link_libraries(pahole dwarves dwarves_reorganize)
+
+
 set(pdwtags_SRCS pdwtags.c)
 add_executable(pdwtags ${pdwtags_SRCS})
 target_link_libraries(pdwtags dwarves)

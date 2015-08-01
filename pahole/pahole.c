@@ -21,6 +21,12 @@
 #include "dwarves.h"
 #include "dutil.h"
 #include "ctf_encoder.h"
+#include "hashmap.h"
+
+#define KEY_MAX_LENGTH (1024*1024)
+
+static map_t typedef_map;
+static map_t struct_map;
 
 static bool ctf_encode;
 static bool first_obj_only;
@@ -187,6 +193,39 @@ static void class_name_formatter(struct class *class,
 	puts(class__name(class, cu));
 }
 
+static int map_put(map_t my_map, char *key)
+{
+        char *value = malloc(strlen(key)+1);
+        snprintf(value, KEY_MAX_LENGTH, "%s", key);
+        return hashmap_put(my_map, value, value);
+}
+
+static int map_is_unique(map_t my_map, char *key)
+{
+        char *value;
+        return hashmap_get(my_map, key, (void**)(&value));
+}
+
+static void map__fprintf(map_t my_map, struct tag *tag, const struct cu *cu,
+                    const struct conf_fprintf *conf)
+{
+  char buf[KEY_MAX_LENGTH];
+  FILE *fp;
+  fp = fmemopen(buf, KEY_MAX_LENGTH, "w");
+  tag__fprintf(tag, cu, conf, fp);
+  fclose(fp);
+  if(map_is_unique(my_map, buf) == MAP_MISSING) {
+    map_put(my_map, buf);
+  }
+}
+
+int map_it_printer(any_t data, any_t item)
+{
+        char *value = item;
+        printf("%s\n", value);
+        return MAP_OK;
+}
+
 static void class_formatter(struct class *class, struct cu *cu, uint16_t id)
 {
 	struct tag *typedef_alias = NULL;
@@ -219,10 +258,7 @@ static void class_formatter(struct class *class, struct cu *cu, uint16_t id)
 	} else
 		conf.prefix = conf.suffix = NULL;
 
-printf("ciao");
-	tag__fprintf(tag, cu, &conf, stdout);
-
-	putchar('\n');
+	map__fprintf(struct_map, tag, cu, &conf);
 }
 
 static void print_packable_info(struct class *c, struct cu *cu, uint16_t id)
@@ -280,8 +316,7 @@ static void print_types(struct cu *cu)
   cu__for_each_type(cu, id, tag) {
     if(tag__is_typedef(tag))
     {
-      typedef__fprintf(tag, cu, &conf, stdout);
-      puts(";");
+      map__fprintf(typedef_map, tag, cu, &conf);
     }
   }
 }
@@ -1140,7 +1175,7 @@ static enum load_steal_kind pahole_stealer(struct cu *cu,
 
 		memset(tab, ' ', sizeof(tab) - 1);
 
-    print_types(cu);
+		print_types(cu);
 		print_classes(cu);
 		goto dump_it;
 	}
@@ -1262,7 +1297,14 @@ int main(int argc, char *argv[])
 
 	conf_load.steal = pahole_stealer;
 
+      	typedef_map = hashmap_new();
+       	struct_map = hashmap_new();
 	err = cus__load_files(cus, &conf_load, argv + remaining);
+	hashmap_iterate(typedef_map, map_it_printer, NULL);
+	hashmap_iterate(struct_map, map_it_printer, NULL);
+       	hashmap_free(typedef_map);
+       	hashmap_free(struct_map);
+
 	if (err != 0) {
 		fputs("pahole: No debugging information found\n", stderr);
 		goto out_cus_delete;
