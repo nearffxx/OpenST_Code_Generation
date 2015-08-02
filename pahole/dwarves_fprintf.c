@@ -260,8 +260,20 @@ size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 		return printed + fprintf(fp, " %s", type__name(type, cu));
 	}
 
-
 	do {
+
+	if (tag__is_struct(tag_type) || tag__is_union(tag_type) ||
+			   tag__is_enumeration(tag_type)) {
+			tconf = *conf;
+			tconf.indent = 0;
+			tconf.type_spacing -= 8;
+			tconf.prefix         = NULL;
+			tconf.suffix         = NULL;
+			tconf.emit_stats     = 0;
+	}
+
+
+
 	switch (tag_type->tag) {
 	case DW_TAG_array_type:
 		printed = fprintf(fp, "typedef ");
@@ -301,7 +313,6 @@ size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 	case DW_TAG_class_type:
 	case DW_TAG_structure_type: {
 		struct type *ctype = tag__type(tag_type);
-
 		printed = fprintf(fp, "typedef ");
 		if(!type__name(tag__type(tag_type), cu))
 			printed += class__fprintf(tag__class(tag_type),

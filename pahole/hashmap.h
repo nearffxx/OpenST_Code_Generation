@@ -35,7 +35,6 @@ typedef any_t map_t;
 */
 extern map_t hashmap_new();
 
-extern int list_iterate(map_t in, PFany f, any_t item);
 /*
  * Iteratively call f with argument (item, data) for
  * each element data in the hashmap. The function must

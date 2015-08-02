@@ -64,6 +64,8 @@ static char *class_name;
 static struct strlist *class_names;
 static char separator = '\t';
 
+static int print_choise;
+
 static struct conf_fprintf conf = {
 	.emit_stats = 1,
 };
@@ -214,16 +216,16 @@ static void map__fprintf(map_t my_map, struct tag *tag, const struct cu *cu,
   fp = fmemopen(buf, KEY_MAX_LENGTH, "w");
   tag__fprintf(tag, cu, conf, fp);
   fclose(fp);
+  if(strstr(buf, "XPRESMAN_LIST"))
+  {
+  	#include<signal.h>
+  	raise(SIGINT);
+  }
+
   if(map_is_unique(my_map, buf) == MAP_MISSING) {
     map_put(my_map, buf);
+    printf("%s\n", buf);
   }
-}
-
-int map_it_printer(any_t data, any_t item)
-{
-        char *value = item;
-        printf("%s\n", value);
-        return MAP_OK;
 }
 
 static void class_formatter(struct class *class, struct cu *cu, uint16_t id)
@@ -1175,8 +1177,10 @@ static enum load_steal_kind pahole_stealer(struct cu *cu,
 
 		memset(tab, ' ', sizeof(tab) - 1);
 
-		print_types(cu);
-		print_classes(cu);
+		if (print_choise == 0)
+			print_types(cu);
+		if (print_choise == 1)
+			print_classes(cu);
 		goto dump_it;
 	}
 
@@ -1298,11 +1302,12 @@ int main(int argc, char *argv[])
 	conf_load.steal = pahole_stealer;
 
       	typedef_map = hashmap_new();
-       	struct_map = hashmap_new();
-	err = cus__load_files(cus, &conf_load, argv + remaining);
-	list_iterate(typedef_map, map_it_printer, NULL);
-	list_iterate(struct_map, map_it_printer, NULL);
+      	print_choise = 0;
+		err = cus__load_files(cus, &conf_load, argv + remaining);
        	hashmap_free(typedef_map);
+       	struct_map = hashmap_new();
+      	print_choise = 1;
+		err = cus__load_files(cus, &conf_load, argv + remaining);
        	hashmap_free(struct_map);
 
 	if (err != 0) {
