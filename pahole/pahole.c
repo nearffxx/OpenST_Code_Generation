@@ -1300,8 +1300,8 @@ int main(int argc, char *argv[])
       	typedef_map = hashmap_new();
        	struct_map = hashmap_new();
 	err = cus__load_files(cus, &conf_load, argv + remaining);
-	hashmap_iterate(typedef_map, map_it_printer, NULL);
-	hashmap_iterate(struct_map, map_it_printer, NULL);
+	list_iterate(typedef_map, map_it_printer, NULL);
+	list_iterate(struct_map, map_it_printer, NULL);
        	hashmap_free(typedef_map);
        	hashmap_free(struct_map);
 

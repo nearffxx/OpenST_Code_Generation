@@ -6,7 +6,6 @@
  * Modified by Pete Warden to fix a serious performance problem, support strings as keys
  * and removed thread synchronization - http://petewarden.typepad.com
  */
-
 #define MAP_MISSING -3  /* No such element */
 #define MAP_FULL -2 	/* Hashmap is full */
 #define MAP_OMEM -1 	/* Out of Memory */
@@ -36,6 +35,7 @@ typedef any_t map_t;
 */
 extern map_t hashmap_new();
 
+extern int list_iterate(map_t in, PFany f, any_t item);
 /*
  * Iteratively call f with argument (item, data) for
  * each element data in the hashmap. The function must

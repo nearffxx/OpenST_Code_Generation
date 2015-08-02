@@ -17,12 +17,19 @@ typedef struct _hashmap_element{
 	any_t data;
 } hashmap_element;
 
+typedef struct _list_el {
+   any_t data;
+   struct _list_el *next;
+} list_el;
+
 /* A hashmap has some maximum size and current size,
  * as well as the data to hold. */
 typedef struct _hashmap_map{
 	int table_size;
 	int size;
 	hashmap_element *data;
+	list_el *list_head;
+	list_el *list_tail;
 } hashmap_map;
 
 /*
@@ -37,6 +44,7 @@ map_t hashmap_new() {
 
 	m->table_size = INITIAL_SIZE;
 	m->size = 0;
+	m->list_head = NULL;
 
 	return m;
 	err:
@@ -235,6 +243,19 @@ int hashmap_put(map_t in, char* key, any_t value){
 	m->data[index].key = key;
 	m->data[index].in_use = 1;
 	m->size++; 
+	
+	
+	list_el *list_curr = (list_el*) malloc(sizeof(list_el));
+	if(!list_curr) return MAP_OMEM;
+	
+	list_curr->data = value;
+	list_curr->next = NULL;
+	
+	if(m->list_head == NULL)
+		m->list_head = list_curr;
+	else
+		m->list_tail->next = list_curr;
+	m->list_tail = list_curr;
 
 	return MAP_OK;
 }
@@ -271,6 +292,20 @@ int hashmap_get(map_t in, char* key, any_t *arg){
 
 	/* Not found */
 	return MAP_MISSING;
+}
+
+int list_iterate(map_t in, PFany f, any_t item)
+{
+	hashmap_map* m = (hashmap_map*) in;
+	list_el *list_it = m->list_head;
+	
+	while(list_it) {
+		int status = f(item, list_it->data);
+		if (status != MAP_OK) {
+			return status;
+		}
+		list_it = list_it->next;
+	}
 }
 
 /*
