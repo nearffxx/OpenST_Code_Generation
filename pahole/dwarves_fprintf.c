@@ -234,6 +234,9 @@ static size_t array_type__fprintf(const struct tag *tag,
 
 bool fixtypedef;
 
+static size_t union__fprintf(struct type *type, const struct cu *cu,
+					 const struct conf_fprintf *conf, FILE *fp);
+
 size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 			const struct conf_fprintf *conf, FILE *fp)
 {
@@ -312,7 +315,6 @@ size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 		return printed;
 	case DW_TAG_class_type:
 	case DW_TAG_structure_type: {
-		struct type *ctype = tag__type(tag_type);
 		printed = fprintf(fp, "typedef ");
 		if(!type__name(tag__type(tag_type), cu))
 			printed += class__fprintf(tag__class(tag_type),
@@ -322,12 +324,19 @@ size_t typedef__fprintf(const struct tag *tag, const struct cu *cu,
 		printed += fprintf(fp, " %s", type__name(type, cu));
 		return printed;
 	}
+	case DW_TAG_union_type: {
+		printed = fprintf(fp, "typedef ");
+		printed += union__fprintf(tag__type(tag_type), cu, &tconf, fp);
+		printed += fprintf(fp, " %s", type__name(type, cu));
+		return printed;
+	}
 	}
 	break;
 	} while(true);
 
-	return fprintf(fp, "typedef %s %s",
+	return fprintf(fp, "typedef %s %s%s",
 					 tag__name(tag_type, cu, bf, sizeof(bf), pconf),
+					 is_pointer == 0 ? "" : is_pointer == 1 ? "*" : "**",
 					 type__name(type, cu));
 }
 
@@ -515,8 +524,8 @@ static const char *__tag__name(const struct tag *tag, const struct cu *cu,
 		snprintf(bf, len, "%s", variable__name(tag__variable(tag), cu));
 		break;
 	default:
-		snprintf(bf, len, "%s%s", tag__prefix(cu, tag->tag, pconf),
-			 type__name(tag__type(tag), cu) ?: "");
+		snprintf(bf, len, "%s%s%s", tag__prefix(cu, tag->tag, pconf),
+			 type__name(tag__type(tag), cu) ?: "", " ");
 		break;
 	}
 
@@ -565,9 +574,6 @@ static const char *variable__prefix(const struct variable *var)
 	}
 	return NULL;
 }
-
-static size_t union__fprintf(struct type *type, const struct cu *cu,
-					 const struct conf_fprintf *conf, FILE *fp);
 
 static size_t type__fprintf(struct tag *type, const struct cu *cu,
 					const char *name, const struct conf_fprintf *conf,
@@ -670,8 +676,20 @@ static size_t type__fprintf(struct tag *type, const struct cu *cu,
 			n = tag__has_type_loop(type, ptype, NULL, 0, fp);
 			if (n)
 				return printed + n;
-			if (ptype->tag != DW_TAG_subroutine_type && ptype->type) {
+			if (ptype->tag == DW_TAG_volatile_type) {
 				ptype = cu__type(cu, ptype->type);
+			}
+			if (ptype->tag == DW_TAG_union_type) {
+
+				ctype = tag__type(ptype);
+
+				if (type__name(ctype, cu) != NULL)
+					printed += fprintf(fp, "union %-*s %s",
+								 conf->type_spacing - 6,
+								 type__name(ctype, cu), name);
+				else
+					printed += union__fprintf(ctype, cu, &tconf, fp);
+				break;
 			}
 			if (ptype->tag == DW_TAG_subroutine_type) {
 				printed += ftype__fprintf(tag__ftype(ptype),
@@ -1123,7 +1141,8 @@ size_t ftype__fprintf(const struct ftype *ftype, const struct cu *cu,
 	printed = fprintf(fp, "%s%s%s%s",
 				 ftype->tag.tag == DW_TAG_subroutine_type ?
 					"(" : "",
-				 is_pointer == 0 ? "" : is_pointer == 1 ? "*" : "**", name ?: "",
+				 is_pointer == 0 ? "" : is_pointer == 1 ? "*" : "**",
+				 name ?: "",
 				 ftype->tag.tag == DW_TAG_subroutine_type ?
 					")" : "");
 
@@ -1136,6 +1155,21 @@ static size_t function__fprintf(const struct tag *tag, const struct cu *cu,
 {
 	struct function *func = tag__function(tag);
 	size_t printed = 0;
+
+	if (strncmp(function__name(func, cu), "sys_", 4))
+		return printed;
+
+  	struct parameter *pos;
+	ftype__for_each_parameter(&func->proto, pos) {
+		if (!parameter__name(pos, cu))
+			return printed;
+	}
+	
+	struct tag *type = cu__type(cu, (&func->proto)->tag.type);
+	char sbf[128];
+	const char *stype = tag__name(type, cu, sbf, sizeof(sbf), conf);
+	if (!strcmp(stype, "void"))
+		return printed;
 
 	if (func->virtuality == DW_VIRTUALITY_virtual ||
 			func->virtuality == DW_VIRTUALITY_pure_virtual)
@@ -1697,6 +1731,7 @@ size_t tag__fprintf(struct tag *tag, const struct cu *cu,
 		break;
 	case DW_TAG_union_type:
 		printed += union__fprintf(tag__type(tag), cu, pconf, fp);
+		printed += fprintf(fp, ";int arm_tracing_offset[%5u];int arm_tracing_size[%5u]", 0, tag__type(tag)->size);
 		break;
 	case DW_TAG_variable:
 		printed += variable__fprintf(tag, cu, pconf, fp);

@@ -25,8 +25,7 @@
 
 #define KEY_MAX_LENGTH (1024*1024)
 
-static map_t typedef_map;
-static map_t struct_map;
+static map_t hashmap;
 
 static bool ctf_encode;
 static bool first_obj_only;
@@ -209,26 +208,21 @@ static int map_is_unique(map_t my_map, char *key)
 }
 
 static void map__fprintf(map_t my_map, struct tag *tag, const struct cu *cu,
-                    const struct conf_fprintf *conf)
+                    const struct conf_fprintf *conf, FILE *fp)
 {
   char buf[KEY_MAX_LENGTH];
-  FILE *fp;
-  fp = fmemopen(buf, KEY_MAX_LENGTH, "w");
-  tag__fprintf(tag, cu, conf, fp);
-  fclose(fp);
-  if(strstr(buf, "XPRESMAN_LIST"))
-  {
-  	#include<signal.h>
-  	raise(SIGINT);
-  }
+  FILE *mfp;
+  mfp = fmemopen(buf, KEY_MAX_LENGTH, "w");
+  tag__fprintf(tag, cu, conf, mfp);
+  fclose(mfp);
 
   if(map_is_unique(my_map, buf) == MAP_MISSING) {
     map_put(my_map, buf);
-    printf("%s\n", buf);
+    fprintf(fp, "%s\n", buf);
   }
 }
 
-static void class_formatter(struct class *class, struct cu *cu, uint16_t id)
+static void class_formatter(struct class *class, struct cu *cu, uint16_t id, FILE *fp)
 {
 	struct tag *typedef_alias = NULL;
 	struct tag *tag = class__tag(class);
@@ -260,7 +254,7 @@ static void class_formatter(struct class *class, struct cu *cu, uint16_t id)
 	} else
 		conf.prefix = conf.suffix = NULL;
 
-	map__fprintf(struct_map, tag, cu, &conf);
+	map__fprintf(hashmap, tag, cu, &conf, fp);
 }
 
 static void print_packable_info(struct class *c, struct cu *cu, uint16_t id)
@@ -309,21 +303,27 @@ static struct class *class__filter(struct class *class, struct cu *cu,
 				   uint16_t tag_id);
 
 static void (*formatter)(struct class *class,
-			 struct cu *cu, uint16_t id) = class_formatter;
+			 struct cu *cu, uint16_t id);
 
-static void print_types(struct cu *cu)
+static void print_types(struct cu *cu, FILE *fp)
 {
   int id;
   struct tag *tag;
   cu__for_each_type(cu, id, tag) {
-    if(tag__is_typedef(tag))
-    {
-      map__fprintf(typedef_map, tag, cu, &conf);
-    }
+    map__fprintf(hashmap, tag, cu, &conf, fp);
   }
 }
 
-static void print_classes(struct cu *cu)
+static void print_unions(struct cu *cu, FILE *fp)
+{
+  int id;
+  struct tag *tag;
+  cu__for_each_union(cu, id, tag) {
+    map__fprintf(hashmap, tag, cu, &conf, fp);
+  }
+}
+
+static void print_classes(struct cu *cu, FILE *fp)
 {
 	uint16_t id;
 	struct class *pos;
@@ -365,8 +365,18 @@ static void print_classes(struct cu *cu)
 		if (show_packable && !global_verbose)
 			print_packable_info(pos, cu, id);
 		else if (formatter != NULL)
-			formatter(pos, cu, id);
+			class_formatter(pos, cu, id, fp);
 	}
+}
+
+static void print_sys_calls(struct cu *cu, FILE *fp)
+{
+  int id;
+  struct function *tag;
+  map_put(hashmap, ";"); //fix ;
+  cu__for_each_function(cu, id, tag) {
+    map__fprintf(hashmap, function__tag(tag), cu, &conf, fp);
+  }
 }
 
 static struct cu *cu__filter(struct cu *cu)
@@ -1148,6 +1158,9 @@ static void do_reorg(struct tag *class, struct cu *cu)
 	*/
 }
 
+static FILE *sys_struct_file;
+static FILE *sys_calls_file;
+
 static enum load_steal_kind pahole_stealer(struct cu *cu,
 					   struct conf_load *conf_load __unused)
 {
@@ -1178,9 +1191,13 @@ static enum load_steal_kind pahole_stealer(struct cu *cu,
 		memset(tab, ' ', sizeof(tab) - 1);
 
 		if (print_choise == 0)
-			print_types(cu);
-		if (print_choise == 1)
-			print_classes(cu);
+			print_types(cu, sys_struct_file);
+		if (print_choise == 1) 
+			print_unions(cu, sys_struct_file);
+		if (print_choise == 2)
+			print_classes(cu, sys_struct_file);
+		if (print_choise == 3)
+			print_sys_calls(cu, sys_calls_file);
 		goto dump_it;
 	}
 
@@ -1300,15 +1317,28 @@ int main(int argc, char *argv[])
 	}
 
 	conf_load.steal = pahole_stealer;
-
-      	typedef_map = hashmap_new();
+		sys_struct_file = fopen("sys_struct.h", "w");
+		sys_calls_file = fopen("sys_calls.h", "w");
+      	hashmap = hashmap_new();
       	print_choise = 0;
 		err = cus__load_files(cus, &conf_load, argv + remaining);
-       	hashmap_free(typedef_map);
-       	struct_map = hashmap_new();
+       	hashmap_free(hashmap);
+       	hashmap = hashmap_new();
       	print_choise = 1;
+  		fprintf(sys_struct_file, "typedef struct arm_tracing_unions {\n");
 		err = cus__load_files(cus, &conf_load, argv + remaining);
-       	hashmap_free(struct_map);
+  		fprintf(sys_struct_file, "};\n");
+       	hashmap_free(hashmap);
+       	hashmap = hashmap_new();
+      	print_choise = 2;
+		err = cus__load_files(cus, &conf_load, argv + remaining);
+       	hashmap_free(hashmap);
+       	hashmap = hashmap_new();
+      	print_choise = 3;
+		err = cus__load_files(cus, &conf_load, argv + remaining);
+       	hashmap_free(hashmap);
+       	fclose(sys_struct_file);
+       	fclose(sys_calls_file);
 
 	if (err != 0) {
 		fputs("pahole: No debugging information found\n", stderr);

@@ -245,7 +245,8 @@ static inline __pure bool cu__is_c_plus_plus(const struct cu *cu)
  */
 #define cu__for_each_type(cu, id, pos)				\
 	for (id = 1; id < cu->types_table.nr_entries; ++id)	\
-		if (!(pos = cu->types_table.entries[id]))	\
+		if (!(pos = cu->types_table.entries[id])	|| \
+			 !(tag__is_typedef(pos)))	\
 			continue;				\
 		else
 
@@ -258,7 +259,14 @@ static inline __pure bool cu__is_c_plus_plus(const struct cu *cu)
 #define cu__for_each_struct(cu, id, pos)				\
 	for (id = 1; id < cu->types_table.nr_entries; ++id)		\
 		if (!(pos = tag__class(cu->types_table.entries[id])) || \
-		    !tag__is_struct(class__tag(pos)))			\
+		    !(tag__is_struct(class__tag(pos))))		\
+			continue;					\
+		else
+
+#define cu__for_each_union(cu, id, pos)				\
+	for (id = 1; id < cu->types_table.nr_entries; ++id)		\
+		if (!(pos = cu->types_table.entries[id]) || \
+		    !(tag__is_union(pos)))			\
 			continue;					\
 		else
 
